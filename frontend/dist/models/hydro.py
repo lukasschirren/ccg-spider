@@ -1,25 +1,29 @@
 from typing import TypedDict
+import math
+from cmath import nan, pi
 
 
 class Town(TypedDict):
     pv: float
     wind: float
     ocean_dist: float
-    water_dist: float
-    mombasa_dist: float
-    rest_area: float
-    avail_area: float
+    waterbodies_dist: float
+    waterway_dist: float
+    grid_dist: float
+    theo_pv: float
+    theo_wind: float
 
 
 class Pars(TypedDict):
     pv_capex: float
+    wind_capex: float
+    ely_capex: float
     min_area: float
     water_tran_cost: float
     elec_ocean_water_treatment: float
     interest_rate: float
     h2_state: str
     elec_water_treatment: float
-    wind_capex: float
     water_resource: str
     h2_trans_cost: float
     wind_dist: float
@@ -28,13 +32,10 @@ class Pars(TypedDict):
 
 class C:
     pv_lifetime: float = 20
-    pv_opex: float = 9.3  # €/kWp*a
+    pv_opex: float = 9.3              # €/kWp*a
 
-    wind_lifetime: float = 20
-    wind_opex: float = 40  # €/kWp*a
-    cp: float = 0.45  # Coefficient of performance wind turbine
-    den_air: float = 1.14  # Air density in kg/m3
-    d_rot: float = 100  # Diameter of rotor in kg/m3
+    wind_lifetime = 20
+    wind_opex = 40                    # €/kW*a
 
     ely_capex: float = 1280  # €/kW
     ely_opex: float = 0.02  # % CAPEX/a
@@ -50,18 +51,18 @@ class C:
 
 
 class Result(TypedDict):
-    tech: str
-    elec_technology: str
-    cost_elec_pv: float
-    cost_elec_wind: float
-    cost_elec: float
-    cost_h2: float
-    cost_h2_ocean: float
-    turbine_output: float
-    pv_radiation: float
-    h2_cost_to_demand: float
-    pv_kWh: float
-    wind_kWh: float
+    #tech: str
+    #elec_technology: str
+    #cost_elec_pv: float
+    wind: float
+    #cost_elec: float
+    #cost_h2: float
+    #cost_h2_ocean: float
+    #turbine_output: float
+    #pv_radiation: float
+    #h2_cost_to_demand: float
+    #pv_kWh: float
+    #wind_kWh: float
 
 
 def pvf(interestrate: float, lifetime: float) -> float:
@@ -74,210 +75,83 @@ def pvf(interestrate: float, lifetime: float) -> float:
     )
 
 
-def elec_tech(option1: float, option2: float) -> str:
-    if option1 > option2:
-        return "wind"
-    else:
-        return "pv"
+def LCOE_wind(town: Town, pars: Pars) -> float:
+
+    cp = 0.45                       #Coefficient of performance wind turbine 
+    den_air = 1.21                  #Air density in kg/m3
+    d_rot = 82                      #Diameter of rotor in kg/m3
+    field_eff = 0.95
+    availability = 0.98
+    p_turb = 2300
+
+    start_speed = 3                     #[m/s]
+    switchoff_speed = 34                #[m/s]
+
+    wind_hourly_output = []
+    input_ely_wind = []
+        
+    v_m = town['wind']                       # [m/s] mean wind speed
+    A = v_m *(2/(pi**0.5))
+    annual_power_output = 0
 
 
-def handling_costs(pars: Pars, cost_elec: float) -> float:
-    """
-    Function handling costs (compression or liquification)
-    """
-    if "Liquid" in pars["h2_state"]:
-        return C.energy_liquid * (cost_elec / 1000)
-    else:
-        return float(
-            (0.003944 * 298.15 * (((500 / C.ely_output_pressure) ** (0.4 / 1.4)) - 1))
-            / 0.8
-        ) * (cost_elec / 1000)
+    for p in range((int(switchoff_speed))):
 
+        if (p+1) < start_speed:
+            annual_power_output = annual_power_output + 0
+            windspeed_probability = (1-math.exp(-(((p+1+0.5)/A)**2)))-(1-math.exp(-(((p+1-0.5)/A)**2)))
 
-def water_costs(town: Town, pars: Pars, cost_elec: float) -> float:
-    """
-    Water costs
-    """
-    if "Domestic" in pars["water_resource"]:
-        return (
-            (
-                C.water_spec_cost
-                + (pars["water_tran_cost"] / 100) * town["water_dist"]
-                + pars["elec_water_treatment"] * cost_elec
-            )
-            * C.ely_water
-            / 1000
-        )
-    elif "Ocean" in pars["water_resource"]:
-        return (
-            (
-                C.water_spec_cost
-                + (pars["water_tran_cost"] / 100) * town["ocean_dist"]
-                + pars["elec_ocean_water_treatment"] * cost_elec
-            )
-            * C.ely_water
-            / 1000
-        )
-    elif "Cheapest option" in pars["water_resource"]:
-        water_costs_h2_water_bodies = (
-            (
-                C.water_spec_cost
-                + (pars["water_tran_cost"] / 100) * town["water_dist"]
-                + pars["elec_water_treatment"] * cost_elec
-            )
-            * C.ely_water
-            / 1000
-        )
-        water_costs_h2_ocean = (
-            (
-                C.water_spec_cost
-                + (pars["water_tran_cost"] / 100) * town["ocean_dist"]
-                + pars["elec_ocean_water_treatment"] * cost_elec
-            )
-            * C.ely_water
-            / 1000
-        )
-        if water_costs_h2_ocean > water_costs_h2_water_bodies:
-            return water_costs_h2_water_bodies
-    return water_costs_h2_ocean
+            for h in range(round(8760*windspeed_probability)):
+                wind_hourly_output.append(0)
 
+        elif (p+1) == switchoff_speed:
+            annual_power_output = annual_power_output + 0
+            windspeed_probability = (1-math.exp(-(((p+1+0.5)/A)**2)))-(1-math.exp(-(((p+1-0.5)/A)**2)))
 
-def pv_kwp(pars: Pars, available_area: float) -> float:
-    """
-    Adding PV GWh possible
-    """
-    if available_area > pars["min_area"]:
-        return ((available_area) * 1000000) / pars["pv_size"]
-    else:
-        return 0
+            for h in range(round(8760*windspeed_probability)):
+                wind_hourly_output.append(0)
+            
+        else:
+            windspeed_output = 0.5 * cp * den_air * ((82**2)*pi/4) * ((p+1) ** 3) * field_eff * availability
+            windspeed_probability = (1-math.exp(-(((p+1+0.5)/A)**2)))-(1-math.exp(-(((p+1-0.5)/A)**2)))
 
+            if (windspeed_output/1000) > p_turb:
+                annual_power_output = annual_power_output + windspeed_probability*p_turb*8760
+                for h in range(round(8760*windspeed_probability)):
+                    wind_hourly_output.append(p_turb)
+            else:
+                annual_power_output = annual_power_output + windspeed_probability*windspeed_output*8760/1000
 
-def wind_pc(pars: Pars, available_area: float) -> float:
-    """
-    Adding Wind GWh possible
-    """
-    if available_area > pars["min_area"]:
-        return ((available_area) * 1000000) / (
-            (3.14 * ((pars["wind_dist"] * C.d_rot) ** 2)) / 4
-        )
-    else:
-        return 0
+                for h in range(round(8760*windspeed_probability)):
+                    wind_hourly_output.append(windspeed_output/1000)
 
+    turb_out = annual_power_output / p_turb
+    wind_elec_cost_hex = ((pars['wind_capex']/pvf(pars['interest_rate']/100,C.wind_lifetime)+C.wind_opex)/turb_out) * 1000
 
-def calc_turbine_output(town: Town) -> float:
-    return float(
-        0.5
-        * C.cp
-        * C.den_air
-        * ((C.d_rot**2) * 3.14 / 4)
-        * (town["wind"] ** 3)
-        * 8760
-        / 1000
-        / 3000
-    )  # yearly power output per turbine
+    if wind_elec_cost_hex > 200:
+        wind_elec_cost_hex = 200
 
+    return wind_elec_cost_hex
 
-def calc_cost_elec_wind(pars: Pars, turbine_output: float) -> float:
-    return (
-        (
-            (
-                pars["wind_capex"] / pvf(pars["interest_rate"] / 100, C.wind_lifetime)
-                + C.wind_opex
-            )
-        )
-        / turbine_output
-    ) * 1000
+def LCOE_pv(town: Town, pars: Pars) -> float:
 
+    pv_elec_cost_hex = (((pars['pv_capex']/pvf(pars['interest_rate']/100,C.pv_lifetime))+C.pv_opex)/town['pv']/365) * 1000
+    
+    return pv_elec_cost_hex
 
-def calc_cost_elec_pv(town: Town, pars: Pars) -> float:
-    return (
-        (
-            pars["pv_capex"] / pvf((pars["interest_rate"] / 100), C.pv_lifetime)
-            + C.pv_opex
-        )
-        / town["pv"]
-        / 365
-    ) * 1000
-
-
-def calc_cost_ely(pars: Pars) -> float:
-    return (
-        (
-            (C.ely_capex / pvf(pars["interest_rate"] / 100, C.ely_lt))
-            / (C.ely_cap * 8760)
-        )
-        * (C.h2_en_den / C.ely_eff)
-    ) * (1 + C.ely_opex)
-
-
-def calc_cost_h2_ocean(
-    town: Town, pars: Pars, cost_ely: float, cost_elec: float, cost_elec_h2: float
-) -> float:
-    return (
-        cost_elec_h2
-        + cost_ely
-        + handling_costs(pars, cost_elec)
-        + (
-            (
-                C.water_spec_cost
-                + (pars["water_tran_cost"] / 100) * town["ocean_dist"]
-                + pars["elec_ocean_water_treatment"] * cost_elec
-            )
-            * C.ely_water
-            / 1000
-        )
-    )
 
 
 def model(town: Town, pars: Pars) -> Result:
-    # Electricity cost calculation
-    cost_elec_pv = calc_cost_elec_pv(town, pars)
-    pv_radiation = town["pv"] * 365
-    turbine_output = calc_turbine_output(town)
-    cost_elec_wind = calc_cost_elec_wind(pars, turbine_output)
-    cost_elec = min(cost_elec_pv, cost_elec_wind)
-    cost_ely = calc_cost_ely(pars)
-    elec_technology = elec_tech(cost_elec_pv, cost_elec_wind)
 
-    # LCOH cost calculation
-    cost_elec_h2 = (cost_elec / 1000) * (C.h2_en_den / C.ely_eff)
-    cost_h2_ocean = calc_cost_h2_ocean(town, pars, cost_ely, cost_elec, cost_elec_h2)
-    cost_h2 = (
-        cost_elec_h2
-        + cost_ely
-        + handling_costs(pars, cost_elec)
-        + water_costs(town, pars, cost_elec)
+    wind_lcoe = LCOE_wind(town,pars)
+    pv_lcoe = LCOE_pv(town,pars)
+
+
+    return dict(
+
+        wind_lcoe=max(0, wind_lcoe),
+        pv_lcoe=max(0, pv_lcoe),
+
     )
 
-    # Distance to port in mombasa --> demand center due to export
-    # H2 costs including transport
-    h2_cost_to_demand = cost_h2 + (pars["h2_trans_cost"] * town["mombasa_dist"] / 100)
-
-    # Including restricted surface area: Currently forest, agri and water
-    tech = (
-        "something"
-        if (town["avail_area"] - town["rest_area"]) > pars["min_area"]
-        else "none"
-    )
-    available_area = town["avail_area"] - town["rest_area"]
-
-    pv_kWp = pv_kwp(pars, available_area)
-    pv_kWh = pv_kWp * town["pv"] / 1000000  # in GWh
-
-    wind_pcs = wind_pc(pars, available_area)
-    wind_kWh = turbine_output * wind_pcs / 1000000  # in GWh
-
-    return Result(
-        elec_technology=elec_technology,
-        tech=tech,
-        cost_elec_pv=cost_elec_pv,
-        cost_elec_wind=cost_elec_wind,
-        cost_elec=cost_elec,
-        cost_h2=cost_h2,
-        cost_h2_ocean=cost_h2_ocean,
-        turbine_output=turbine_output,
-        pv_radiation=pv_radiation,
-        h2_cost_to_demand=h2_cost_to_demand,
-        pv_kWh=pv_kWh,
-        wind_kWh=wind_kWh,
-    )
+    
