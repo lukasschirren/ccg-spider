@@ -3,6 +3,7 @@ from pathlib import Path
 import geopandas as gpd
 import h3pandas  # NoQA
 import pandas as pd
+from osgeo import gdal
 import rasterio
 from rasterio.features import rasterize
 from rasterstats import zonal_stats
