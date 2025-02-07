@@ -58,11 +58,54 @@ def add_features(geom: gpd.GeoDataFrame, features: list, raster_like: Path):
     return geom
 
 
-def create_hex(aoi: gpd.GeoDataFrame, resolution=5):
-    geom = aoi.h3.polyfill_resample(resolution).get(["geometry"])
-    geom = geom.assign(h3_index=geom.index)
-    geom = geom.reset_index(drop=True)
-    return geom
+def create_hex(aoi: gpd.GeoDataFrame, resolution=5, min_buffer=0, step=500):
+    """
+    Create hexagons to cover the AOI, optimizing the buffer size to ensure full coverage.
+
+    Parameters:
+    - aoi: GeoDataFrame containing the area of interest (Laos)
+    - resolution: H3 resolution for hexagon creation
+    - min_buffer: Starting buffer size in meters
+    - step: Incremental step for increasing buffer size in meters
+    """
+    projected_crs = 'EPSG:4088'
+    aoi_projected = aoi.to_crs(projected_crs)
+
+    buffer_size = min_buffer
+    optimal_buffer = None
+
+    while True:
+        aoi_buffered = aoi_projected.copy()
+        aoi_buffered['geometry'] = aoi_buffered.geometry.buffer(buffer_size)
+
+        aoi_buffered = aoi_buffered.to_crs(epsg=4326)
+        hex_geom = aoi_buffered.h3.polyfill_resample(resolution).get(["geometry"])
+        hex_geom = hex_geom.assign(h3_index=hex_geom.index)
+        hex_geom = hex_geom.reset_index(drop=True)
+
+        if check_coverage(aoi, hex_geom):
+            optimal_buffer = buffer_size
+            break
+
+        buffer_size += step
+    print(f"Optimal buffer size found: {optimal_buffer} meters")
+
+    return hex_geom
+
+
+def check_coverage(original_aoi: gpd.GeoDataFrame, hex_geom: gpd.GeoDataFrame) -> bool:
+    """
+    Check if the generated hexagons fully cover the original AOI.
+
+    Parameters:
+    - original_aoi: The original area of interest without buffering
+    - hex_geom: GeoDataFrame containing the generated hexagons
+
+    Returns:
+    - True if the hexagons fully cover the AOI, False otherwise.
+    """
+    covered = original_aoi.geometry.apply(lambda geom: hex_geom.unary_union.covers(geom))
+    return covered.all()
 
 
 def add_raster_layer(

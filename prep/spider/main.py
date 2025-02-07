@@ -31,7 +31,7 @@ def feat(
     else:
         echo("Creating a new hex geometry from scratch")
         geom = gpd.read_file(cfg["aoi"])
-        geom = create_hex(geom, cfg["hex_res"])
+        geom = create_hex(geom, cfg["hex_res"],0,500)
         geom = add_neighbors(geom)
 
     if "features" in cfg and isinstance(cfg["features"], list):
